@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>视频上传分析工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .upload-box {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+        .status-icon {
+            font-size: 20px;
+        }
+        .valid { color: #4CAF50; }
+        .invalid { color: #f44336; }
+        #exportBtn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #exportBtn:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="upload-box">
+            <input type="file" id="fileInput" multiple accept="video/*">
+            <p>拖放文件到这里或点击选择文件</p>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>视频标题</th>
+                    <th>大小状态</th>
+                    <th>视频时长</th>
+                    <th>格式状态</th>
+                    <th>分辨率状态</th>
+                    <th>音量状态</th>
+                    <th>状态</th>
+                </tr>
+            </thead>
+            <tbody id="fileTableBody">
+                <!-- 动态插入行 -->
+            </tbody>
+        </table>
+        <button id="exportBtn">导出表格</button>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileTableBody = document.getElementById('fileTableBody');
+        const filesData = [];
+
+        // 监听文件选择事件
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // 处理文件选择
+        async function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            for (const file of files) {
+                try {
+                    const { duration, resolution } = await getVideoMetadata(file);
+                    const volumeStatus = await checkVolume(file);
+                    filesData.push({
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        duration,
+                        resolution,
+                        volumeStatus,
+                        isValid: true
+                    });
+                } catch (error) {
+                    filesData.push({
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        duration: '00:00:00',
+                        resolution: 'N/A',
+                        volumeStatus: 'N/A',
+                        isValid: false
+                    });
+                    alert(`视频 ${file.name} 已损坏或无法读取`);
+                }
+                updateFileTable();
+            }
+        }
+
+        // 获取视频元数据（时长和分辨率）
+        function getVideoMetadata(file) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+
+                video.onloadedmetadata = () => {
+                    const duration = formatDuration(video.duration);
+                    const resolution = `${video.videoWidth}x${video.videoHeight}`;
+                    URL.revokeObjectURL(video.src);
+                    resolve({ duration, resolution });
+                };
+
+                video.onerror = () => {
+                    reject(new Error('视频损坏'));
+                };
+
+                video.src = URL.createObjectURL(file);
+            });
+        }
+
+        // 检查音量
+        function checkVolume(file) {
+            return new Promise((resolve) => {
+                const audioContext = new AudioContext();
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    const arrayBuffer = e.target.result;
+                    audioContext.decodeAudioData(arrayBuffer, (buffer) => {
+                        const leftChannel = buffer.getChannelData(0);
+                        const rightChannel = buffer.getChannelData(1);
+                        const leftVolume = getVolume(leftChannel);
+                        const rightVolume = getVolume(rightChannel);
+                        const isVolumeValid = isVolumeInRange(leftVolume) && isVolumeInRange(rightVolume);
+                        resolve(isVolumeValid ? '✓' : '✗');
+                    });
+                };
+
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 计算音量（分贝）
+        function getVolume(channel
